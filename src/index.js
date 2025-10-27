@@ -4,7 +4,7 @@ import chalk from "chalk";
 import Table from "cli-table3";
 import simpleGit from "simple-git";
 
-export async function scanProjects(folderpath) {
+export async function scanProjects(folderpath, options = {}) {
   if (!fs.existsSync(folderpath)) {
     console.error(chalk.red("[X] Folder not found!"));
     process.exit(1);
@@ -24,6 +24,8 @@ export async function scanProjects(folderpath) {
     colWidths: [20, 35, 12, 20],
   });
 
+  const results = [];
+
   for (const project of projects) {
     const fullPath = path.join(folderpath, project);
     const git = simpleGit(fullPath);
@@ -39,7 +41,9 @@ export async function scanProjects(folderpath) {
       }
     }
 
-    const { summary, totalLines } = analyzeProject(fullPath);
+    const { summary, totalLines, raw } = analyzeProject(fullPath);
+    results.push({ project, languages: raw, summary, totalLines, lastCommit });
+
     table.push([
       chalk.cyan(project),
       summary,
@@ -50,6 +54,19 @@ export async function scanProjects(folderpath) {
 
   console.log(chalk.greenBright(`\n Scanned ${projects.length} projects\n`));
   console.log(table.toString());
+
+  // JSON Export
+  if (options.json) {
+    fs.writeFileSync("report.json", JSON.stringify(results, null, 2));
+    console.log(chalk.green("\n[✓] report.json created!\n"));
+  }
+
+  // HTML Export
+  if (options.html) {
+    const html = generateHTMLReport(results);
+    fs.writeFileSync("report.html", html, "utf8");
+    console.log(chalk.green("\n[✓] report.html created!\n"));
+  }
 }
 
 /**
@@ -128,5 +145,55 @@ function analyzeProject(folder) {
     })
     .join(", ");
 
-  return { summary, totalLines };
+  return { summary, totalLines, raw: lineCounts };
+}
+
+/*
+ * HTML Report
+ */
+function generateHTMLReport(data) {
+  const rows = data
+    .map(
+      (d) => `
+    <tr>
+      <td>${d.project}</td>
+      <td>${d.summary}</td>
+      <td>${d.totalLines}</td>
+      <td>${d.lastCommit}</td>
+    </tr>`
+    )
+    .join("");
+
+  return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DevRadar Report</title>
+<style>
+body { font-family: 'Segoe UI', sans-serif; background: #0e1116; color: #e5e5e5; padding: 30px; }
+h1 { color: #00ff99; }
+table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+th, td { border: 1px solid #222; padding: 10px; text-align: left; }
+th { background: #1a1f27; color: #00ff99; }
+tr:nth-child(even) { background: #1b1f24; }
+tr:hover { background: #272e38; }
+small { color: #888; }
+</style>
+</head>
+<body>
+  <h1>DevRadar Report</h1>
+  <small>Generated on ${new Date().toLocaleString()}</small>
+  <table>
+    <tr>
+      <th>Project</th>
+      <th>Languages</th>
+      <th>Lines</th>
+      <th>Last Commit</th>
+    </tr>
+    ${rows}
+  </table>
+</body>
+</html>`;
 }
