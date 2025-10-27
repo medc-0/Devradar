@@ -20,8 +20,8 @@ export async function scanProjects(folderpath) {
   }
 
   const table = new Table({
-    head: ["Project", "Languages", "Last Commit"],
-    colWidths: [25, 25, 25],
+    head: ["Project", "Languages", "Lines", "Last Commit"],
+    colWidths: [20, 35, 12, 20],
   });
 
   for (const project of projects) {
@@ -39,47 +39,94 @@ export async function scanProjects(folderpath) {
       }
     }
 
-    const langs = detectLanguages(fullPath);
-    table.push([chalk.cyan(project), langs, chalk.grey(lastCommit)]);
+    const { summary, totalLines } = analyzeProject(fullPath);
+    table.push([
+      chalk.cyan(project),
+      summary,
+      chalk.yellow(totalLines.toString()),
+      chalk.gray(lastCommit),
+    ]);
   }
 
   console.log(chalk.greenBright(`\n Scanned ${projects.length} projects\n`));
   console.log(table.toString());
 }
 
-function detectLanguages(folder) {
-  const extensions = new Set();
+/**
+ * Analyzes a folder to find languages and count lines.
+ */
+function analyzeProject(folder) {
+  const lineCounts = {};
+  const ignoreExts = [
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".exe",
+    ".dll",
+    ".zip",
+    ".sample",
+    ".lnk",
+  ];
+  const textExts = [
+    ".js",
+    ".ts",
+    ".py",
+    ".html",
+    ".css",
+    ".lua",
+    ".json",
+    ".md",
+    ".cpp",
+    ".c",
+    ".h",
+    ".hpp",
+    ".cs",
+    ".java",
+  ];
 
   function walk(dir) {
     for (const file of fs.readdirSync(dir)) {
       const full = path.join(dir, file);
       if (fs.statSync(full).isDirectory()) walk(full);
       else {
-        const ext = path.extname(file);
-        if (ext) extensions.add(ext);
+        const ext = path.extname(file).toLowerCase();
+        if (ignoreExts.includes(ext)) continue;
+
+        if (textExts.includes(ext)) {
+          const content = fs.readFileSync(full, "utf8");
+          const lines = content.split(/\r?\n/).length;
+          lineCounts[ext] = (lineCounts[ext] || 0) + lines;
+        }
       }
     }
   }
 
   walk(folder);
 
+  const totalLines = Object.values(lineCounts).reduce((a, b) => a + b, 0);
   const extMap = {
-    ".js": "Javascript",
-    ".ts": "Typescript",
+    ".js": "JavaScript",
+    ".ts": "TypeScript",
     ".py": "Python",
-    ".lua": "Lua",
     ".html": "HTML",
     ".css": "CSS",
-    ".java": "Java",
-    ".rs": "Rust",
-    ".swift": "Swift",
-    ".kt": "Kotlin",
+    ".lua": "Lua",
+    ".json": "JSON",
+    ".md": "Markdown",
     ".cpp": "C++",
     ".c": "C",
-    ".cs": "C#",
-    ".h": "C-Header",
+    ".h": "C Header",
     ".hpp": "C++ Header",
+    ".cs": "C#",
+    ".java": "Java",
   };
 
-  return [...extensions].map((e) => extMap[e] || e).join(", ");
+  const summary = Object.entries(lineCounts)
+    .map(([ext, count]) => {
+      const percent = ((count / totalLines) * 100).toFixed(1);
+      return `${extMap[ext] || ext} (${percent}%)`;
+    })
+    .join(", ");
+
+  return { summary, totalLines };
 }
