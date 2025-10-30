@@ -83,6 +83,8 @@ function analyzeProject(folder) {
     ".zip",
     ".sample",
     ".lnk",
+    "node_modules",
+    ".venv",
   ];
   const textExts = [
     ".js",
